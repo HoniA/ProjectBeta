@@ -8,6 +8,7 @@
 #include <assert.h>
 #include<algorithm>
 #include <time.h>
+#include <fstream>
 
 using namespace std;
 
@@ -83,14 +84,18 @@ void grid::createRewardTable() {
 
 class agent {
 public:
+	int initXPos;
+	int initYPos;
 	int xpos; // bounded between vertical "bumpers"
 	int ypos; // bounded between horizontal "bumpers"
+	int initState; //only holds the initial state
 	int state; // funxtion of x and y and xmax (from grid)
 	int numMoves;
 	double epsilon = 0.1; // greedy value
 	double alpha = 0.1; // learning value
 	double gamma = 0.9;
 
+	vector<vector<double>> initqTable; // only holds initial q table
 	vector <vector<double>> qTable;
 
 	void init();
@@ -119,20 +124,23 @@ void agent::placeAgent(vector<int> x, vector<int> y, int xmax, int ymax) {
 
 	// if statements are redundant because the agent position is now randomized instead of being a user input
 	if (userx < 0)
-		xpos = 0;
+		initXPos = 0;
 	else if (userx > size(x) - 1)
-		xpos = size(x) - 1;
+		initXPos = size(x) - 1;
 	else
-		xpos = userx;
+		initXPos = userx;
 
 	if (usery < 0)
-		ypos = 0;
+		initYPos = 0;
 	else if (usery > size(y) - 1)
-		ypos = size(y) - 1;
+		initYPos = size(y) - 1;
 	else
-		ypos = usery;
-
-	state = xpos + ypos*(xmax + 1);
+		initYPos = usery;
+	
+	xpos = initXPos;
+	ypos = initYPos;
+	initState = xpos + ypos*(xmax + 1);
+	state = initState;
 }
 
 void agent::initQ(vector<int> s) {
@@ -145,10 +153,12 @@ void agent::initQ(vector<int> s) {
 		{
 			actions.push_back(SMALLRAND);
 		}
-		qTable.push_back(actions);
+		initqTable.push_back(actions);
 		// Clear actions before resetting them
 		actions.clear();
 	}
+
+	qTable = initqTable;
 }
 
 void agent::checkBumper(grid g, int x, int y)
@@ -248,9 +258,21 @@ void agent::updateQ(double action, vector<double> reward, double currentState)
 	state = currentState;
 }
 
+void runQLearner(grid g, agent a, ofstream &fout, int r, int e);
+
+void TestD(vector<vector<double>> Q, vector<double> r);
+
+void TestE(agent a);
+
+void TestF(int moves);
+
 int main()
 {
 	srand(time(NULL));
+
+	ofstream fout;
+	fout.clear();
+	fout.open("LearningCurveData.txt");
 
 	// initialize variables
 	int xmax = 5;
@@ -269,21 +291,76 @@ int main()
 	doubleOseven.init();
 	doubleOseven.placeAgent(gridWorld.xcoord, gridWorld.ycoord, gridWorld.xmax, gridWorld.ymax);
 	doubleOseven.initQ(gridWorld.states);
+	
+	fout << "Run" << "\t" << "Episode" << "\t" << "Number of Moves" << endl;
 
-	cout << "Agent's state: " << doubleOseven.state << endl;
-	cout << "Goal State: " << gridWorld.goalState << endl;
-	system("pause");
-
-	while (doubleOseven.state != gridWorld.goalState)
+	//do some Q learning
+	for (int i = 0; i < 30; i++)
 	{
-		doubleOseven.moveAgent(gridWorld);
+		for (int j = 0; j < 50; j++)
+		{
+			runQLearner(gridWorld, doubleOseven, fout, i, j);
+		}
 	}
-
-	cout << "Goal was at: " << gridWorld.goalPosX << ", " << gridWorld.goalPosY << endl;
-	cout << "Agent ended at" << doubleOseven.xpos << ", " << doubleOseven.ypos << endl;
-	cout << "Number of moves: " << doubleOseven.numMoves << endl;
+	fout.close();
+	TestD(doubleOseven.qTable, gridWorld.rewardTable);
+	TestE(doubleOseven);
+	TestF(doubleOseven.numMoves);
 
 	system("pause");
     return 0;
 }
 
+void runQLearner(grid g, agent a, ofstream &fout, int r, int e)
+{
+	//cout << "Initial X Pos: " << a.xpos << " Initial Y Pos: " << a.ypos << "Initial State: " << a.state << endl;
+	while (a.state != g.goalState)
+	{
+		a.moveAgent(g);
+	}
+
+	fout << r << "\t" << e << "\t" << a.numMoves << endl;
+
+/*cout << "Goal was at: " << g.goalPosX << ", " << g.goalPosY << endl;
+cout << "Agent ended at" << a.xpos << ", " << a.ypos << endl;
+cout << "Number of moves: " << a.numMoves << endl;*/
+
+a.xpos = a.initXPos;
+a.ypos = a.initYPos;
+a.state = a.initState;
+//reset number of moves to zero
+a.numMoves = 0;
+}
+
+void TestD(vector<vector<double>> Q, vector<double> s)
+{
+	int numStates = size(s);
+	// loop through q table
+	// check if any are greater than 100 (reward of goal state)
+	for (int i = 0; i < numStates; i++)
+	{
+		for (int j = 0; j < 4; j++)
+		{
+			assert(Q[i][j] <= 100);
+		}
+	}
+}
+
+void TestE(agent a)
+{
+	// only runs after reaching goal state
+	assert(a.state = a.initState);
+	assert(a.initqTable != a.qTable);
+}
+
+void TestF(int moves)
+{
+	//don't know what optimal number is yet
+}
+
+void TestG()
+{
+	// dunno how to do this yet
+	// new state representation
+	// run same q-learning process
+}
