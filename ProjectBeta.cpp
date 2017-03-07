@@ -40,14 +40,14 @@ void grid::init(int x, int y, int goalx, int goaly) {
 	ymax = y;
 	goalPosX = goalx;
 	goalPosY = goaly;
-	goalState = goalx + goaly*(xmax + 1);
+	goalState = goalx + goaly*(xmax+1);
 
-	for (int n = 0; n < xmax; n++)
+	for (int n = 0; n < xmax+1; n++)
 	{
 		xcoord.push_back(n);
 	}
 
-	for (int m = 0; m < ymax; m++)
+	for (int m = 0; m < ymax+1; m++)
 	{
 		ycoord.push_back(m);
 	}
@@ -62,7 +62,7 @@ void grid::coordToStates() {
 		for (int m = 0; m < xmax+1; m++)
 		{
 			// create state values
-			states.push_back(n + m*(xmax + 1));
+			states.push_back(m + n*(xmax+1));
 		}
 	}
 }
@@ -76,7 +76,7 @@ void grid::createRewardTable() {
 	}
 
 	// find the state that holds the goal
-	int goalState = goalPosX + goalPosY*(xmax + 1);
+	int goalState = goalPosX + goalPosY*(xmax+1);
 
 	// reward at goal is 100
 	rewardTable.at(goalState) = 100;
@@ -91,19 +91,21 @@ public:
 	int initState; //only holds the initial state
 	int state; // funxtion of x and y and xmax (from grid)
 	int numMoves;
-	double epsilon = 0.1; // greedy value
+	double epsilon = 0.1; // greedy value++
 	double alpha = 0.1; // learning value
 	double gamma = 0.9;
 
 	vector<vector<double>> initqTable; // only holds initial q table
 	vector <vector<double>> qTable;
+	vector<double> moves; //stores number of moves over one episode
 
 	void init();
 	void placeAgent(vector<int> x, vector<int> y, int xmax, int ymax);
 	void initQ(vector<int> s);
 	void moveAgent(grid g);
 	void checkBumper(grid g, int x, int y);
-	void updateQ(double action, vector<double> reward, double currentState);
+	void updateQ(int action, vector<double> reward, int currentState);
+	void runQLearner(grid g, ofstream &fout, int r, int e);
 
 };
 
@@ -119,8 +121,11 @@ void agent::placeAgent(vector<int> x, vector<int> y, int xmax, int ymax) {
 	int userx;
 	int usery;
 
-	userx = (double)rand() / RAND_MAX*(xmax);
-	usery = (double)rand() / RAND_MAX*(ymax);
+	//userx = (double)rand() / RAND_MAX*(xmax);
+	//usery = (double)rand() / RAND_MAX*(ymax);
+
+	userx = 0;
+	usery = 0;
 
 	// if statements are redundant because the agent position is now randomized instead of being a user input
 	if (userx < 0)
@@ -139,7 +144,7 @@ void agent::placeAgent(vector<int> x, vector<int> y, int xmax, int ymax) {
 	
 	xpos = initXPos;
 	ypos = initYPos;
-	initState = xpos + ypos*(xmax + 1);
+	initState = xpos + ypos*(xmax+1);
 	state = initState;
 }
 
@@ -192,7 +197,7 @@ void agent::checkBumper(grid g, int x, int y)
 
 void agent::moveAgent(grid g) 
 {
-	int n = GREED_RAND;
+	double n = GREED_RAND;
 	//outside of loop because i need this sent as parameter to update function
 	int m=0; // default
 	
@@ -204,15 +209,17 @@ void agent::moveAgent(grid g)
 	else
 	{
 		//greedy move
-		int h = *max_element(qTable[state].begin(), qTable[state].end());
+		double h = *max_element(qTable[state].begin(), qTable[state].end());
 		for (int j = 0; j < 4; j++)
 		{
-			if (qTable[state][j] = h)
+			if (qTable[state][j] == h)
 			{
 				m = j;
 			}
 		}
 	}
+
+	//cout << "m: " << m <<"\t" << endl;
 
 	if (m == 0)
 	{
@@ -243,28 +250,53 @@ void agent::moveAgent(grid g)
 	//check for bumpers
 	checkBumper(g, xpos, ypos);
 
-	double newState = xpos + ypos*(g.xmax + 1);
+	int newState = xpos + ypos*(g.xmax+1);
 
 	//update the q table 
 	updateQ(m,g.rewardTable, newState);
 	numMoves++;
 }
 
-void agent::updateQ(double action, vector<double> reward, double currentState) 
+void agent::updateQ(int action, vector<double> reward, int currentState) 
 {
 	//this for previous state and action after said action is taken
+	
 	double maxQ = *max_element(qTable[currentState].begin(), qTable[currentState].end());
-	qTable[state][action] = qTable[state][action] + alpha*(reward.at(currentState)+gamma*maxQ - qTable[state][action]);
+	double q = qTable[state][action];
+
+	
+	double R = reward.at(currentState);
+	//cout << "q before: " << q << "\t" << "state before: " << state << "\t" << "reward before: " << R << "\t" << endl;
+	q = q + alpha*(R+gamma*maxQ - q);
+	qTable[state][action] = q;
+	//cout << qTable[state][action] << endl;
 	state = currentState;
+	//cout << "q after: " << q << "\t" << "state after: " << state << "\t" << "reward after: " << R << "\t"  << endl;
 }
 
-void runQLearner(grid g, agent a, ofstream &fout, int r, int e);
+void agent::runQLearner(grid g, ofstream &fout, int r, int e)
+{
+	//cout << "Initial X Pos: " << a.xpos << " Initial Y Pos: " << a.ypos << "Initial State: " << a.state << endl;
+	while (state != g.goalState)
+	{
+		moveAgent(g);
+	}
+
+	fout << r << "\t" << e << "\t" << numMoves << endl;
+
+	xpos = initXPos;
+	ypos = initYPos;
+	state = initState;
+	//reset number of moves to zero
+	moves.push_back(numMoves);
+	numMoves = 0;
+}
 
 void TestD(vector<vector<double>> Q, vector<double> r);
 
 void TestE(agent a);
 
-void TestF(int moves);
+void TestF(int goalx, int goaly, int x1, int y1, vector<double> numMoves);
 
 int main()
 {
@@ -275,10 +307,11 @@ int main()
 	fout.open("LearningCurveData.txt");
 
 	// initialize variables
-	int xmax = 5;
-	int ymax = 5;
-	int goalx = 2;
-	int goaly = 2;
+	int xmax = 15;
+	int ymax = 15;
+	// size of grid is (xmax+1)*(ymax+1)
+	int goalx = 5;
+	int goaly = 5;
 	
 	// create grid
 	grid gridWorld;
@@ -286,51 +319,37 @@ int main()
 	gridWorld.coordToStates();
 	gridWorld.createRewardTable();
 
-	//create agent
-	agent doubleOseven; 
-	doubleOseven.init();
-	doubleOseven.placeAgent(gridWorld.xcoord, gridWorld.ycoord, gridWorld.xmax, gridWorld.ymax);
-	doubleOseven.initQ(gridWorld.states);
+	
 	
 	fout << "Run" << "\t" << "Episode" << "\t" << "Number of Moves" << endl;
 
 	//do some Q learning
 	for (int i = 0; i < 30; i++)
 	{
-		for (int j = 0; j < 50; j++)
+		//create agent
+		agent doubleOseven;
+		doubleOseven.init();
+		doubleOseven.placeAgent(gridWorld.xcoord, gridWorld.ycoord, gridWorld.xmax, gridWorld.ymax);
+		doubleOseven.initQ(gridWorld.states);
+
+		for (int j = 0; j < 500; j++)
 		{
-			runQLearner(gridWorld, doubleOseven, fout, i, j);
+			doubleOseven.runQLearner(gridWorld, fout, i, j);
 		}
+
+		cout << "Statistical Run: " << i << endl;
+		TestD(doubleOseven.qTable, gridWorld.rewardTable);
+		TestE(doubleOseven);
+		TestF(goalx, goaly, doubleOseven.initXPos, doubleOseven.initYPos, doubleOseven.moves);
 	}
+
 	fout.close();
-	TestD(doubleOseven.qTable, gridWorld.rewardTable);
-	TestE(doubleOseven);
-	TestF(doubleOseven.numMoves);
+	
 
 	system("pause");
     return 0;
 }
 
-void runQLearner(grid g, agent a, ofstream &fout, int r, int e)
-{
-	//cout << "Initial X Pos: " << a.xpos << " Initial Y Pos: " << a.ypos << "Initial State: " << a.state << endl;
-	while (a.state != g.goalState)
-	{
-		a.moveAgent(g);
-	}
-
-	fout << r << "\t" << e << "\t" << a.numMoves << endl;
-
-/*cout << "Goal was at: " << g.goalPosX << ", " << g.goalPosY << endl;
-cout << "Agent ended at" << a.xpos << ", " << a.ypos << endl;
-cout << "Number of moves: " << a.numMoves << endl;*/
-
-a.xpos = a.initXPos;
-a.ypos = a.initYPos;
-a.state = a.initState;
-//reset number of moves to zero
-a.numMoves = 0;
-}
 
 void TestD(vector<vector<double>> Q, vector<double> s)
 {
@@ -341,26 +360,136 @@ void TestD(vector<vector<double>> Q, vector<double> s)
 	{
 		for (int j = 0; j < 4; j++)
 		{
-			assert(Q[i][j] <= 100);
+			assert(Q[i][j] <= 101); //attributing small rounding up error
 		}
 	}
+
+	cout << "Test D Passed!" << endl;
 }
 
 void TestE(agent a)
 {
 	// only runs after reaching goal state
-	assert(a.state = a.initState);
+	assert(a.state == a.initState);
 	assert(a.initqTable != a.qTable);
+	cout << "Test E Passed!" << endl;
 }
 
-void TestF(int moves)
+void TestF(int goalx, int goaly, int x1, int y1, vector<double> numMoves)
 {
 	//don't know what optimal number is yet
+	// compare to minimum number of moves (distance)
+	double opt_dist = (goalx - x1) + (goaly - y1);
+	double finalMoves = numMoves.back();
+	assert(finalMoves > 0.75 * opt_dist && finalMoves < 1.25 * opt_dist);  // fails fairly often due to variance of number of moves being high
+	cout << "Test F Passed!" << endl;
 }
 
 void TestG()
 {
 	// dunno how to do this yet
-	// new state representation
+	// new state representation // initial state is 0, next state agent moves to is 1, etc...
 	// run same q-learning process
+
+	ofstream fout;
+	fout.clear();
+	fout.open("NewLearningCurveData.txt");
+
+	int xmax = 5;
+	int ymax = 5;
+	int goalx = 2;
+	int goaly = 2;
+
+	grid newGrid;
+	newGrid.init(xmax, ymax, goalx, goaly);
+	newGrid.coordToStates();
+	newGrid.createRewardTable();
+
+	agent newAgent;
+	newAgent.init();
+	newAgent.placeAgent(newGrid.xcoord, newGrid.ycoord, newGrid.xmax, newGrid.ymax);
+	newAgent.initQ(newGrid.states);
+	newAgent.state = 0; 
+
+	fout << "Run" << "\t" << "Episode" << "\t" << "Number of Moves" << endl;
+
+	for (int i = 0; i < 30; i++)
+	{
+		for (int j = 0; j < 50; j++)
+		{
+			//cout << "Initial X Pos: " << a.xpos << " Initial Y Pos: " << a.ypos << "Initial State: " << a.state << endl;
+			while (newAgent.state != newGrid.goalState)
+			{
+				double n = GREED_RAND;
+				//outside of loop because i need this sent as parameter to update function
+				int m = 0; // default
+
+				if (n < newAgent.epsilon)
+				{
+					//random move
+					m = MOVE_RAND + 0.5;
+				}
+				else
+				{
+					//greedy move
+					double h = *max_element(newAgent.qTable[newAgent.state].begin(), newAgent.qTable[newAgent.state].end());
+					for (int j = 0; j < 4; j++)
+					{
+						if (newAgent.qTable[newAgent.state][j] == h)
+						{
+							m = j;
+						}
+					}
+				}
+
+				//cout << "m: " << m <<"\t" << endl;
+
+				if (m == 0)
+				{
+					//move left
+					newAgent.xpos--;
+				}
+
+				else if (m == 1)
+				{
+					//move up
+					newAgent.ypos++;
+				}
+
+				else if (m == 2)
+				{
+					//move right
+					newAgent.xpos++;
+
+				}
+
+				else
+				{
+					//move down
+					newAgent.ypos--;
+				}
+
+				//cout << m;
+				//check for bumpers
+				newAgent.checkBumper(newGrid, newAgent.xpos, newAgent.ypos);
+
+				int newState = newAgent.state++;
+
+				//update the q table 
+				newAgent.updateQ(m, newGrid.rewardTable, newState);
+				newAgent.numMoves++;
+			}
+
+			fout << i << "\t" << j << "\t" << newAgent.numMoves << endl;
+
+			newAgent.xpos = newAgent.initXPos;
+			newAgent.ypos = newAgent.initYPos;
+			newAgent.state = newAgent.initState;
+			//reset number of moves to zero
+			newAgent.moves.push_back(newAgent.numMoves);
+			newAgent.numMoves = 0;
+		}
+	}
+
+	fout.close();
 }
